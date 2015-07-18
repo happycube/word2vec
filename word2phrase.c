@@ -14,23 +14,25 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <math.h>
 #include <pthread.h>
 
 #define MAX_STRING 60
-#define MAX_SHORT_WORD 12
+#define MAX_SHORT_WORD 12 
 
 const int vocab_hash_size = 536870912; // Maximum 2^29 entries in the vocabulary
+//const int vocab_hash_size = 500000000; 
 
 typedef float real;                    // Precision of float numbers
 
-struct vocab_word {
-  unsigned int cn;
-  union {
+struct __attribute__((packed)) vocab_word {
+  union __attribute__((packed)) {
 	char *word;
 	char shortword[MAX_SHORT_WORD];
   } w;
+  unsigned int cn;
 };
 
 const unsigned int SHORT_WORD = (1 << 31); 
@@ -329,7 +331,7 @@ int main(int argc, char **argv) {
   if ((i = ArgPos((char *)"-output", argc, argv)) > 0) strcpy(output_file, argv[i + 1]);
   if ((i = ArgPos((char *)"-min-count", argc, argv)) > 0) min_count = atoi(argv[i + 1]);
   if ((i = ArgPos((char *)"-threshold", argc, argv)) > 0) threshold = atof(argv[i + 1]);
-  printf("%d\n", sizeof(struct vocab_word));
+  printf("%d %d\n", sizeof(struct vocab_word), offsetof(struct vocab_word, cn));
   vocab = (struct vocab_word *)calloc(vocab_max_size, sizeof(struct vocab_word));
   vocab_hash = (int *)calloc(vocab_hash_size, sizeof(int));
   TrainModel();
