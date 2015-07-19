@@ -104,7 +104,7 @@ int SearchVocab(char *word) {
   while (1) {
     if (vocab_hash[hash] == -1) return -1;
 //    printf("%x %d %x %p %s\n", hash, vocab_hash[hash], vocab[vocab_hash[hash]].cn, GetWordPtrI(vocab_hash[hash]), GetWordPtrI(vocab_hash[hash]));
-    if (!strcmp(word, GetWordPtrI(vocab_hash[hash]))) return vocab_hash[hash];
+    if (!strncmp(word, GetWordPtrI(vocab_hash[hash]), MAX_STRING)) return vocab_hash[hash];
     hash = (hash + 1) % vocab_hash_size;
   }
   return -1;
@@ -118,28 +118,25 @@ int ReadWordIndex(FILE *fin) {
   return SearchVocab(word);
 }
 
-// For accounting and tracking how many words got stored in the structure
-long long words = 0, short_words = 0;
-
 // Adds a word to the vocabulary
 int AddWordToVocab(char *word) {
 	unsigned int hash, length = strlen(word) + 1;
+	char *word_addr = NULL;
 
-	words++;
 	if (length <= MAX_SHORT_WORD) {
-		short_words++;
-		strncpy(vocab[vocab_size].w.shortword, word, length);
 		vocab[vocab_size].cn = 1 | SHORT_WORD;
+		word_addr = vocab[vocab_size].w.shortword;
 //		printf("short word %d %s\n", vocab_size, word);
 	} else { 
 		if (length > MAX_STRING) length = MAX_STRING;
-		vocab[vocab_size].w.word = (char *)calloc(length, sizeof(char));
 		vocab[vocab_size].cn = 1;
+		vocab[vocab_size].w.word = (char *)calloc(length, sizeof(char));
+		word_addr = vocab[vocab_size].w.word;
 //		printf("long word %d %s\n", vocab_size, word);
 	}
 		
-	strncpy(GetWordPtrI(vocab_size), word, length);
-
+	strncpy(word_addr, word, length);
+		
 	// Reallocate memory if needed
 	if (vocab_size + 3 >= vocab_max_size) {
 		vocab_max_size += vocab_size_increment;
@@ -331,10 +328,8 @@ int main(int argc, char **argv) {
   if ((i = ArgPos((char *)"-output", argc, argv)) > 0) strcpy(output_file, argv[i + 1]);
   if ((i = ArgPos((char *)"-min-count", argc, argv)) > 0) min_count = atoi(argv[i + 1]);
   if ((i = ArgPos((char *)"-threshold", argc, argv)) > 0) threshold = atof(argv[i + 1]);
-  printf("%d %d\n", sizeof(struct vocab_word), offsetof(struct vocab_word, cn));
   vocab = (struct vocab_word *)calloc(vocab_max_size, sizeof(struct vocab_word));
   vocab_hash = (int *)calloc(vocab_hash_size, sizeof(int));
   TrainModel();
-  printf("%lld %lld %x %d\n", words, short_words, max_count, sizeof(unsigned int)); 
   return 0;
 }
