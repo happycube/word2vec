@@ -19,7 +19,7 @@
 
 const long long max_size = 2000;         // max length of strings
 const long long N = 40;                  // number of closest words that will be shown
-const long long max_w = 50;              // max length of vocabulary entries
+const long long max_w = 60;              // max length of vocabulary entries
 
 int main(int argc, char **argv) {
   FILE *f;
@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
   long long bestw[N];
   char file_name[max_size], st[100][max_size];
   float dist, len, bestd[N], vec[max_size];
-  long long words, size, a, b, c, d, cn, bi[100];
+  long long words, size, a, b, c, cn, bi[100];
   float **M;
   char **vocab;
   if (argc < 2) {
@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
     while (1) {
       vocab[b][a] = fgetc(f);
       if (feof(f) || (vocab[b][a] == ' ')) break;
-      if ((a < max_w) && (vocab[b][a] != '\n')) a++;
+      if ((a < (max_w - 1)) && (vocab[b][a] != '\n')) a++;
     }
     vocab[b][a] = 0;
     len = 0;
@@ -79,7 +79,10 @@ int main(int argc, char **argv) {
     printf("Enter word or sentence (EXIT to break): ");
     a = 0;
     while (1) {
-      st1[a] = fgetc(stdin);
+      int rv = fgetc(stdin);
+
+      if (rv == EOF) return(0);
+      st1[a] = rv;
       if ((st1[a] == '\n') || (a >= max_size - 1)) {
         st1[a] = 0;
         break;
@@ -134,15 +137,16 @@ int main(int argc, char **argv) {
       if (a == 1) continue;
       dist = 0;
       for (a = 0; a < size; a++) dist += vec[a] * M[c][a];
-      for (a = 0; a < N; a++) {
-        if (dist > bestd[a]) {
-          for (d = N - 1; d > a; d--) {
-            bestd[d] = bestd[d - 1];
-            bestw[d] = bestw[d - 1];
-          }
-          bestd[a] = dist;
-          bestw[a] = c;
-          break;
+      if (dist > bestd[N - 1]) {
+	      for (a = 0; (a < N); a++) {
+		if (dist > bestd[a]) {
+			memmove(&bestd[a + 1], &bestd[a], sizeof(float) * (N - a - 1));
+			memmove(&bestw[a + 1], &bestw[a], sizeof(long long) * (N - a - 1));
+
+			bestd[a] = dist;
+			bestw[a] = c;
+			break;
+        	}
         }
       }
     }
