@@ -30,6 +30,7 @@ int main(int argc, char **argv) {
   long long words, size, a, b, c, cn, bi[100];
   float **M;
   char **vocab;
+  float *norm;
   if (argc < 2) {
     printf("Usage: ./distance <FILE>\nwhere FILE contains word projections in the BINARY FORMAT\n");
     return 0;
@@ -51,6 +52,7 @@ int main(int argc, char **argv) {
   for (a = 0; a < N; a++) bestw[a] = -1;
 
   //M = (float *)malloc((long long)words * (long long)size * sizeof(float));
+  norm = (float *)malloc((long long)words * sizeof(float));
   M = (float * *)malloc((long long)words * sizeof(float *));
   // XXX: not checking for proper alloc, since this is temp code
   for (a = 0; a < words; a++) M[a] = (float *)malloc(size * sizeof(float));
@@ -70,9 +72,9 @@ int main(int argc, char **argv) {
 //        fread(&M[b][a], sizeof(float), 1, f);
         len += (M[b][a] * M[b][a]);
     }
-    len = sqrt(len);
+    norm[b] = sqrt(len);
   //  printf("%d %s %f\n", b, vocab[b], len);
-    for (a = 0; a < size; a++) M[b][a] /= len;
+//    for (a = 0; a < size; a++) M[b][a] /= len;
   }
   fclose(f);
   while (1) {
@@ -136,7 +138,8 @@ int main(int argc, char **argv) {
       for (b = 0; b < cn; b++) if (bi[b] == c) a = 1;
       if (a == 1) continue;
       dist = 0;
-      for (a = 0; a < size; a++) dist += vec[a] * M[c][a];
+      for (a = 0; a < size; a++) dist += vec[a] * M[c][a]; // / norm[c]);
+      dist /= norm[c];
       if (dist > bestd[N - 1]) {
 	      for (a = 0; (a < N); a++) {
 		if (dist > bestd[a]) {
