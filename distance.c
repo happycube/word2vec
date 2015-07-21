@@ -24,7 +24,7 @@ const long long max_w = 50;              // max length of vocabulary entries
 int main(int argc, char **argv) {
   FILE *f;
   char st1[max_size];
-  char *bestw[N];
+  long long bestw[N];
   char file_name[max_size], st[100][max_size];
   float dist, len, bestd[N], vec[max_size];
   long long words, size, a, b, c, d, cn, bi[100];
@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
   vocab = (char * *)malloc((long long)words * sizeof(char *));
   for (a = 0; a < words; a++) vocab[a] = (char *)malloc(max_w * sizeof(char));
   
-  for (a = 0; a < N; a++) bestw[a] = (char *)malloc(max_size * sizeof(char));
+  for (a = 0; a < N; a++) bestw[a] = -1;
 
   //M = (float *)malloc((long long)words * (long long)size * sizeof(float));
   M = (float * *)malloc((long long)words * sizeof(float *));
@@ -76,8 +76,6 @@ int main(int argc, char **argv) {
   }
   fclose(f);
   while (1) {
-    for (a = 0; a < N; a++) bestd[a] = 0;
-    for (a = 0; a < N; a++) bestw[a][0] = 0;
     printf("Enter word or sentence (EXIT to break): ");
     a = 0;
     while (1) {
@@ -126,8 +124,10 @@ int main(int argc, char **argv) {
     for (a = 0; a < size; a++) len += vec[a] * vec[a];
     len = sqrt(len);
     for (a = 0; a < size; a++) vec[a] /= len;
-    for (a = 0; a < N; a++) bestd[a] = -1;
-    for (a = 0; a < N; a++) bestw[a][0] = 0;
+    for (a = 0; a < N; a++) {
+	bestd[a] = -1;
+	bestw[a] = -1;
+    }
     for (c = 0; c < words; c++) {
       a = 0;
       for (b = 0; b < cn; b++) if (bi[b] == c) a = 1;
@@ -138,15 +138,15 @@ int main(int argc, char **argv) {
         if (dist > bestd[a]) {
           for (d = N - 1; d > a; d--) {
             bestd[d] = bestd[d - 1];
-            strcpy(bestw[d], bestw[d - 1]);
+            bestw[d] = bestw[d - 1];
           }
           bestd[a] = dist;
-          strcpy(bestw[a], vocab[c]);
+          bestw[a] = c;
           break;
         }
       }
     }
-    for (a = 0; a < N; a++) printf("%50s\t\t%f\n", bestw[a], bestd[a]);
+    for (a = 0; a < N; a++) printf("%50s\t\t%f\n", vocab[bestw[a]], bestd[a]);
   }
   return 0;
 }
