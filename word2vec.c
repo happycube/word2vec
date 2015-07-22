@@ -352,6 +352,61 @@ void SaveVocab() {
   fclose(fo);
 }
 
+inline real DoMAC_Aligned(int n, real * __restrict__ a, real * __restrict__  b) 
+{ 
+	real output = 0;
+	int i = 0;
+
+	real *aa = __builtin_assume_aligned(a, 32);
+	real *ba = __builtin_assume_aligned(b, 32);
+
+	for (i = 0; i < n; i++) {
+		output += aa[i] * ba[i]; 
+	}
+
+	return output;
+}
+
+inline real DoMAC(int n, real * __restrict__ a, real * __restrict__  b) 
+//real DoMAC(int n, real * a, real *  b) 
+{ 
+	real output = 0;
+	int i = 0;
+
+	if ((!((unsigned long)a & 0x3f)) && (!((unsigned long)b & 0x1f))) return DoMAC_Aligned(n, a, b);
+//	printf("MAC %d %p %p\n", n, a, b);
+
+	for (i = 0; i < n; i++) {
+		output += a[i] * b[i]; 
+	}
+
+	return output;
+}
+
+void DoMAC1_Aligned(int n, real * __restrict__ out, real c, real * __restrict__  b) 
+{ 
+	int i = 0;
+
+	real *outa = __builtin_assume_aligned(out, 32);
+	real *ba = __builtin_assume_aligned(b, 32);
+
+	for (i = 0; i < n; i++) {
+		outa[i] += c * ba[i]; 
+	}
+}
+
+void DoMAC1(int n, real * __restrict__  out, real c, real * __restrict__  b) 
+{ 
+	int i = 0;
+
+	if ((!((unsigned long)out & 0x1f)) && (!((unsigned long)b & 0x1f))) return DoMAC1_Aligned(n, out, c, b);
+	printf("MAC1 %p %p\n", out, b);
+
+	for (i = 0; i < n; i++) {
+		out[i] += c * b[i]; 
+	}
+}
+
 void ReadVocab() {
   long long a, i = 0;
   long long cn;
@@ -417,7 +472,7 @@ void InitNet() {
 void *TrainModelThread(void *id) {
   long long a, b, d, cw, word, last_word, sentence_length = 0, sentence_position = 0;
   long long word_count = 0, last_word_count = 0, sen[MAX_SENTENCE_LENGTH + 1];
-  long long l1, l2, c, target, label, local_iter = iter;
+  long long l1, l2, c, target, next_target, label, local_iter = iter;
   unsigned long long next_random = (long long)id;
   real f, g;
   clock_t now;
@@ -509,7 +564,8 @@ void *TrainModelThread(void *id) {
           real *syn1_l2 = &syn1[l2]; 
 
           // Propagate hidden -> output
-          for (c = 0; c < layer1_size; c++) f += neu1[c] * syn1_l2[c];
+          //for (c = 0; c < layer1_size; c++) f += neu1[c] * syn1_l2[c];
+	f = DoMAC(layer1_size, neu1, syn1_l2);
 
           if ((f <= -MAX_EXP) || (f >= MAX_EXP)) 
 		continue; 
@@ -518,13 +574,20 @@ void *TrainModelThread(void *id) {
 
           // 'g' is the gradient multiplied by the learning rate
           g = (1 - voccode->code[d] - f) * alpha;
+	
+	// Propagate errors output -> hidden
+	DoMAC1(layer1_size, neu1e, g, syn1_l2);
+        // Learn weights hidden -> output
+	DoMAC1(layer1_size, syn1_l2, g, neu1);
 
+/*
           for (c = 0; c < layer1_size; c++) {
 		// Propagate errors output -> hidden
 		neu1e[c] += g * syn1_l2[c];
           	// Learn weights hidden -> output
           	syn1_l2[c] += g * neu1[c];
           }
+*/
         }
 
         // NEGATIVE SAMPLING
@@ -532,9 +595,12 @@ void *TrainModelThread(void *id) {
           if (d == 0) {
             target = word;
             label = 1;
-          } else {
             next_random = next_random * (unsigned long long)25214903917 + 11;
-            target = table[(next_random >> 16) % table_size];
+            next_target = table[(next_random >> 16) % table_size];
+          } else {
+            target = next_target;
+            next_random = next_random * (unsigned long long)25214903917 + 11;
+            next_target = table[(next_random >> 16) % table_size];
             if (target == 0) target = next_random % (vocab_size - 1) + 1;
             if (target == word) continue;
             label = 0;
@@ -543,8 +609,9 @@ void *TrainModelThread(void *id) {
           l2 = target * layer1_size;
           real *syn1neg_l2 = &syn1neg[l2]; 
 
-          f = 0;
-          for (c = 0; c < layer1_size; c++) f += neu1[c] * syn1neg_l2[c];
+ //         f = 0;
+//          for (c = 0; c < layer1_size; c++) f += neu1[c] * syn1neg_l2[c];
+	  f = DoMAC(layer1_size, neu1, syn1neg_l2);
 
           if (f > MAX_EXP) 
 		g = (label - 1) * alpha;
@@ -553,10 +620,14 @@ void *TrainModelThread(void *id) {
           else
 		g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
 
+	DoMAC1(layer1_size, neu1e, g, syn1neg_l2);
+	DoMAC1(layer1_size, syn1neg_l2, g, neu1);
+/*
           for (c = 0; c < layer1_size; c++) {
 		neu1e[c] += g * syn1neg_l2[c];
-          	syn1neg_l2[c] += g * neu1[c];
+         	syn1neg_l2[c] += g * neu1[c];
           }
+*/
         }
 
         // hidden -> in
