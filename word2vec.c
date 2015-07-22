@@ -472,7 +472,7 @@ void InitNet() {
 void *TrainModelThread(void *id) {
   long long a, b, d, cw, word, last_word, sentence_length = 0, sentence_position = 0;
   long long word_count = 0, last_word_count = 0, sen[MAX_SENTENCE_LENGTH + 1];
-  long long l1, l2, c, target, next_target, label, local_iter = iter;
+  long long l1, l2, c, target, label, local_iter = iter;
   unsigned long long next_random = (long long)id;
   real f, g;
   clock_t now;
@@ -592,17 +592,22 @@ void *TrainModelThread(void *id) {
 
         // NEGATIVE SAMPLING
         if (negative > 0) for (d = 0; d < negative + 1; d++) {
+	  register long long next_target;
           if (d == 0) {
             target = word;
             label = 1;
             next_random = next_random * (unsigned long long)25214903917 + 11;
             next_target = table[(next_random >> 16) % table_size];
           } else {
-            target = next_target;
             next_random = next_random * (unsigned long long)25214903917 + 11;
             next_target = table[(next_random >> 16) % table_size];
-            if (target == 0) target = next_random % (vocab_size - 1) + 1;
-            if (target == word) continue;
+            
+	    if (target == 0) target = next_random % (vocab_size - 1) + 1;
+
+            if (target == word) {
+	  	target = next_target;
+		continue;
+            }
             label = 0;
           }
 
@@ -628,6 +633,7 @@ void *TrainModelThread(void *id) {
          	syn1neg_l2[c] += g * neu1[c];
           }
 */
+	target = next_target;
         }
 
         // hidden -> in
