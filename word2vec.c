@@ -154,21 +154,35 @@ inline int ReadWordIndex(FILE *fin) {
 
 // Adds a word to the vocabulary
 int AddWordToVocab(char *word) {
-  unsigned int hash, length = strlen(word) + 1;
-  if (length > MAX_STRING) length = MAX_STRING;
-  vocab[vocab_size].w.word = (char *)calloc(length, sizeof(char));
-  strcpy(vocab[vocab_size].w.word, word);
-  vocab[vocab_size].count = 1;
-  vocab_size++;
-  // Reallocate memory if needed
-  if (vocab_size + 2 >= vocab_max_size) {
-    vocab_max_size += 1000;
-    vocab = (struct vocab_word *)realloc(vocab, vocab_max_size * sizeof(struct vocab_word));
-  }
-  hash = GetWordHash(word);
-  while (vocab_hash[hash] != -1) hash = (hash + 1) % vocab_hash_size;
-  vocab_hash[hash] = vocab_size - 1;
-  return vocab_size - 1;
+	unsigned int hash, length = strlen(word) + 1;
+	char *word_addr = NULL;
+
+	if (length <= MAX_SHORT_WORD) {
+		vocab[vocab_size].count = 1 | SHORT_WORD;
+		word_addr = vocab[vocab_size].w.shortword;
+//		printf("short word %d %s\n", vocab_size, word);
+	} else { 
+		if (length > MAX_STRING) length = MAX_STRING;
+		vocab[vocab_size].count = 1;
+		vocab[vocab_size].w.word = (char *)calloc(length, sizeof(char));
+		word_addr = vocab[vocab_size].w.word;
+//		printf("long word %d %s\n", vocab_size, word);
+	}
+		
+	strncpy(word_addr, word, length);
+		
+	// Reallocate memory if needed
+	if (vocab_size + 3 >= vocab_max_size) {
+		vocab_max_size += 1024;
+		vocab = (struct vocab_word *)realloc(vocab, vocab_max_size * sizeof(struct vocab_word));
+	}
+
+	// Find an empty hash spot.
+	hash = GetWordHash(word);
+	while (vocab_hash[hash] != -1) hash = (hash + 1) % vocab_hash_size;
+	vocab_hash[hash]=vocab_size;
+
+	return vocab_size++; // post-increment, won't actually go up until return value taken
 }
 
 // Used later for sorting by word counts
@@ -189,7 +203,7 @@ void SortVocab() {
     // Words occuring less than min_count times will be discarded from the vocab
     if ((GetWordUsageI(a) < min_count) && (a != 0)) {
       vocab_size--;
-      if (vocab[a].count && SHORT_WORD) free(vocab[a].w.word);
+      if (!(vocab[a].count && SHORT_WORD)) free(vocab[a].w.word);
     } else {
       // Hash will be re-computed, as after the sorting it is not actual
       hash=GetWordHash(GetWordPtrI(a));
@@ -406,6 +420,9 @@ void *TrainModelThread(void *id) {
   real *neu1 = (real *)calloc(layer1_size, sizeof(real));
   real *neu1e = (real *)calloc(layer1_size, sizeof(real));
   FILE *fi = fopen(train_file, "rb");
+
+  memset(sen, 0, sizeof(sen));
+
   fseek(fi, file_size / (long long)num_threads * (long long)id, SEEK_SET);
   while (1) {
     if (word_count - last_word_count > 10000) {
