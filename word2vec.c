@@ -357,8 +357,8 @@ inline real DoMAC_Aligned(int n, real * __restrict__ a, real * __restrict__  b)
 	real output = 0;
 	int i = 0;
 
-	real *aa = __builtin_assume_aligned(a, 32);
-	real *ba = __builtin_assume_aligned(b, 32);
+	real *aa = __builtin_assume_aligned(a, 16);
+	real *ba = __builtin_assume_aligned(b, 16);
 
 	for (i = 0; i < n; i++) {
 		output += aa[i] * ba[i]; 
@@ -373,7 +373,7 @@ inline real DoMAC(int n, real * __restrict__ a, real * __restrict__  b)
 	real output = 0;
 	int i = 0;
 
-	if ((!((unsigned long)a & 0x3f)) && (!((unsigned long)b & 0x1f))) return DoMAC_Aligned(n, a, b);
+	if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoMAC_Aligned(n, a, b);
 //	printf("MAC %d %p %p\n", n, a, b);
 
 	for (i = 0; i < n; i++) {
@@ -387,8 +387,8 @@ void DoMAC1_Aligned(int n, real * __restrict__ out, real c, real * __restrict__ 
 { 
 	int i = 0;
 
-	real *outa = __builtin_assume_aligned(out, 32);
-	real *ba = __builtin_assume_aligned(b, 32);
+	real *outa = __builtin_assume_aligned(out, 16);
+	real *ba = __builtin_assume_aligned(b, 16);
 
 	for (i = 0; i < n; i++) {
 		outa[i] += c * ba[i]; 
@@ -399,7 +399,7 @@ void DoMAC1(int n, real * __restrict__  out, real c, real * __restrict__  b)
 { 
 	int i = 0;
 
-	if ((!((unsigned long)out & 0x1f)) && (!((unsigned long)b & 0x1f))) return DoMAC1_Aligned(n, out, c, b);
+	if ((!((unsigned long)out & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoMAC1_Aligned(n, out, c, b);
 	printf("MAC1 %p %p\n", out, b);
 
 	for (i = 0; i < n; i++) {
@@ -503,6 +503,7 @@ void *TrainModelThread(void *id) {
     }
     if (sentence_length == 0) {
       while (1) {
+	real ran;
         word = ReadWordIndex(fi);
         if (feof(fi)) break;
         if (word == -1) continue;
@@ -510,8 +511,8 @@ void *TrainModelThread(void *id) {
         if (word == 0) break;
         // The subsampling randomly discards frequent words while keeping the ranking same
         if (sample > 0) {
-          real ran = (sqrt(GetWordUsageI(word) / (sample * train_words)) + 1) * (sample * train_words) / GetWordUsageI(word);
           next_random = next_random * (unsigned long long)25214903917 + 11;
+          ran = (sqrt(GetWordUsageI(word) / (sample * train_words)) + 1) * (sample * train_words) / GetWordUsageI(word);
           if (ran < (next_random & 0xFFFF) / (real)65536) continue;
         }
         sen[sentence_length] = word;
@@ -535,9 +536,9 @@ void *TrainModelThread(void *id) {
     word = sen[sentence_position];
     if (word == -1) continue;
     for (c = 0; c < layer1_size; c++) neu1[c] = neu1e[c] = 0;
+    b = next_random % window;
     next_random = next_random * (unsigned long long)25214903917 + 11;
 
-    b = next_random % window;
     if (cbow) {  //train the cbow architecture
 //	struct vocab_word *vocword = &vocab[word];
 	struct vocab_code *voccode = &vocab_codes[word];
@@ -596,11 +597,11 @@ void *TrainModelThread(void *id) {
           if (d == 0) {
             target = word;
             label = 1;
-            next_random = next_random * (unsigned long long)25214903917 + 11;
             next_target = table[(next_random >> 16) % table_size];
+            next_random = next_random * (unsigned long long)25214903917 + 11;
           } else {
-            next_random = next_random * (unsigned long long)25214903917 + 11;
             next_target = table[(next_random >> 16) % table_size];
+            next_random = next_random * (unsigned long long)25214903917 + 11;
             
 	    if (target == 0) target = next_random % (vocab_size - 1) + 1;
 
@@ -689,8 +690,8 @@ void *TrainModelThread(void *id) {
             target = word;
             label = 1;
           } else {
-            next_random = next_random * (unsigned long long)25214903917 + 11;
             target = table[(next_random >> 16) % table_size];
+            next_random = next_random * (unsigned long long)25214903917 + 11;
             if (target == 0) target = next_random % (vocab_size - 1) + 1;
             if (target == word) continue;
             label = 0;
