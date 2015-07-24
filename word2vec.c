@@ -19,7 +19,7 @@
 #include <pthread.h>
 
 #define MAX_STRING 100
-#define EXP_TABLE_SIZE 1000
+#define EXP_TABLE_SIZE 512 
 #define MAX_EXP 6
 #define MAX_SENTENCE_LENGTH 1000
 #define MAX_CODE_LENGTH 40
@@ -469,6 +469,22 @@ void InitNet() {
   CreateBinaryTree();
 }
 
+const real EXP_SCALE = (real)EXP_TABLE_SIZE / (real)MAX_EXP;
+
+inline real getExp(real r)
+{
+	real rabs = fabs(r), rv = 0.5;
+
+	int te = (int)(rabs * EXP_SCALE);
+
+	if (te < EXP_TABLE_SIZE) rv = expTable[te];
+
+	rv = r > 0 ? (0.5 + rv) : (0.5 - rv);
+
+//	if (rabs > 0.2) printf("%f %f %f\n", r, exp(r) / (exp(r) + 1.0), rv);
+	return rv;
+}
+
 void *TrainModelThread(void *id) {
   long long a, b, d, cw, word, last_word, sentence_length = 0, sentence_position = 0;
   long long word_count = 0, last_word_count = 0, sen[MAX_SENTENCE_LENGTH + 1];
@@ -568,10 +584,7 @@ void *TrainModelThread(void *id) {
           //for (c = 0; c < layer1_size; c++) f += neu1[c] * syn1_l2[c];
 	f = DoMAC(layer1_size, neu1, syn1_l2);
 
-          if ((f <= -MAX_EXP) || (f >= MAX_EXP)) 
-		continue; 
-          else 	
-		f = expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))];
+	f = getExp(f);
 
           // 'g' is the gradient multiplied by the learning rate
           g = (1 - voccode->code[d] - f) * alpha;
@@ -619,12 +632,7 @@ void *TrainModelThread(void *id) {
 //          for (c = 0; c < layer1_size; c++) f += neu1[c] * syn1neg_l2[c];
 	  f = DoMAC(layer1_size, neu1, syn1neg_l2);
 
-          if (f > MAX_EXP) 
-		g = (label - 1) * alpha;
-          else if (f < -MAX_EXP) 
-		g = (label - 0) * alpha;
-          else
-		g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
+	g = (label - getExp(f)) * alpha;
 
 	DoMAC1(layer1_size, neu1e, g, syn1neg_l2);
 	DoMAC1(layer1_size, syn1neg_l2, g, neu1);
@@ -670,10 +678,7 @@ void *TrainModelThread(void *id) {
           // Propagate hidden -> output
           for (c = 0; c < layer1_size; c++) f += syn0[c + l1] * syn1[c + l2];
 
-          if ((f <= -MAX_EXP) || (f >= MAX_EXP))
-		continue;
-          else
-		f = expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))];
+	f = getExp(f);
 
           // 'g' is the gradient multiplied by the learning rate
           g = (1 - voccode->code[d] - f) * alpha;
@@ -699,9 +704,7 @@ void *TrainModelThread(void *id) {
           l2 = target * layer1_size;
           f = 0;
           for (c = 0; c < layer1_size; c++) f += syn0[c + l1] * syn1neg[c + l2];
-          if (f > MAX_EXP) g = (label - 1) * alpha;
-          else if (f < -MAX_EXP) g = (label - 0) * alpha;
-          else g = (label - expTable[(int)((f + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]) * alpha;
+          g = (label - getExp(f)) * alpha;
           for (c = 0; c < layer1_size; c++) {
 		neu1e[c] += g * syn1neg[c + l2];
 		syn1neg[c + l2] += g * syn0[c + l1];
@@ -885,8 +888,8 @@ int main(int argc, char **argv) {
 
   expTable = (real *)malloc((EXP_TABLE_SIZE + 1) * sizeof(real));
   for (i = 0; i < EXP_TABLE_SIZE; i++) {
-    expTable[i] = exp((i / (real)EXP_TABLE_SIZE * 2 - 1) * MAX_EXP); // Precompute the exp() table
-    expTable[i] = expTable[i] / (expTable[i] + 1);                   // Precompute f(x) = x / (x + 1)
+    expTable[i] = exp((i / (real)EXP_TABLE_SIZE * 1 - 0) * MAX_EXP); // Precompute the exp() table
+    expTable[i] = (expTable[i] / (expTable[i] + 1)) - 0.5;                   // Precompute f(x) = x / (x + 1)
   }
 
   TrainModel();
