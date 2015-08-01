@@ -174,6 +174,7 @@ int AddWordToVocab(char *word) {
 	}
 		
 	strncpy(word_addr, word, length);
+	word_addr[length - 1] = 0;
 		
 	// Reallocate memory if needed
 	if (vocab_size + 3 >= vocab_max_size) {
