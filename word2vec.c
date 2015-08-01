@@ -77,8 +77,14 @@ struct vocab_code *vocab_codes;
 int binary = 0, cbow = 1, debug_mode = 2, window = 5, min_count = 5, num_threads = 12, min_reduce = 1;
 int *vocab_hash;
 long long vocab_max_size = 1000, vocab_size = 0;
-// Making layer1_size const can drastically decrease # of instructions issued...
-long long layer1_size = 100;
+// Making layer1_size const might drastically decrease # of instructions issued...
+//#define CONST_LAYER1 256
+
+#ifdef CONST_LAYER1
+const long long layer1_size = CONST_LAYER1;
+#else
+long long layer1_size = 256;
+#endif
 long long train_words = 0, word_count_actual = 0, iter = 5, file_size = 0, classes = 0;
 real alpha = 0.025, starting_alpha, sample = 1e-3;
 real *syn0, *syn1, *syn1neg, *expTable;
@@ -430,9 +436,9 @@ inline void DoMAC1(const int n, real * __restrict__  out, real c, real * __restr
 { 
 	int i = 0;
 
-	// On Sandy Bridge w/hyperthreading, alignment > 16 causes severe pipeline stalls, slowing down perf.
-//	if ((!((unsigned long)out & 0x3f)) && (!((unsigned long)b & 0x3f))) return DoMAC1_Aligned(n, 64, out, c, b);
-//	if ((!((unsigned long)out & 0x1f)) && (!((unsigned long)b & 0x1f))) return DoMAC1_Aligned(n, 32, out, c, b);
+	// On Sandy Bridge w/hyperthreading, alignment > 16 may or may not cause pipeline stalls, slowing down perf.
+	if ((!((unsigned long)out & 0x3f)) && (!((unsigned long)b & 0x3f))) return DoMAC1_Aligned(n, 64, out, c, b);
+	if ((!((unsigned long)out & 0x1f)) && (!((unsigned long)b & 0x1f))) return DoMAC1_Aligned(n, 32, out, c, b);
 	if ((!((unsigned long)out & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoMAC1_Aligned(n, 16, out, c, b);
 //	printf("MAC1 %p %p\n", out, b);
 
@@ -892,7 +898,9 @@ int main(int argc, char **argv) {
   output_file[0] = 0;
   save_vocab_file[0] = 0;
   read_vocab_file[0] = 0;
+#ifndef CONST_LAYER1
   if ((i = ArgPos((char *)"-size", argc, argv)) > 0) layer1_size = atoi(argv[i + 1]);
+#endif
   if ((i = ArgPos((char *)"-train", argc, argv)) > 0) strcpy(train_file, argv[i + 1]);
   if ((i = ArgPos((char *)"-save-vocab", argc, argv)) > 0) strcpy(save_vocab_file, argv[i + 1]);
   if ((i = ArgPos((char *)"-read-vocab", argc, argv)) > 0) strcpy(read_vocab_file, argv[i + 1]);
