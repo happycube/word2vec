@@ -18,6 +18,13 @@
 #include <math.h>
 #include <pthread.h>
 
+#define AVX
+
+#ifdef AVX
+#include <immintrin.h>
+#include <x86intrin.h>
+#endif
+
 #define MAX_STRING 100
 #define EXP_TABLE_SIZE 512 
 #define MAX_EXP 6
@@ -383,6 +390,25 @@ inline real DoMAC(const int n, real * __restrict__ a, real * __restrict__  b)
 	return output;
 }
 
+#ifdef NOT // AVX
+inline void DoAdd(const int n, real * __restrict__ a, real * __restrict__  b) 
+{
+	int i = 0;
+
+	if ((!((unsigned long)a & 0x1f)) && (!((unsigned long)b & 0x1f))) {
+		__m256 a1, b1, c1;
+
+		for (i = 0; i + 8 < n; i += 8) {
+			a1 = _mm256_load_ps(&a[i]);
+			b1 = _mm256_load_ps(&b[i]);
+			c1 = _mm256_add_ps(a1, b1); 
+			_mm256_store_ps(&a[i], c1);
+		}
+	}
+
+	for (; i < n; i++) a[i] += b[i];
+}
+#else
 inline void DoAdd(const int n, real * __restrict__ a, real * __restrict__  b) 
 { 
 	int i = 0;
@@ -400,6 +426,7 @@ inline void DoAdd(const int n, real * __restrict__ a, real * __restrict__  b)
 		for (i = 0; i < n; i++) a[i] += b[i];
 	}
 }
+#endif
 
 void DoMAC1(const int n, real * __restrict__  out, real c, real * __restrict__  b) 
 { 
@@ -410,10 +437,10 @@ void DoMAC1(const int n, real * __restrict__  out, real c, real * __restrict__  
 /*	if ((!((unsigned long)out & 0x3f)) && (!((unsigned long)b & 0x3f))) {
 		real *outa = __builtin_assume_aligned(out, 64), *ba = __builtin_assume_aligned(b, 64);
 		for (i = 0; i < n; i++) outa[i] += c * ba[i];
-	} else if ((!((unsigned long)out & 0x1f)) && (!((unsigned long)b & 0x1f))) {
+	} else */ if ((!((unsigned long)out & 0x1f)) && (!((unsigned long)b & 0x1f))) {
 		real *outa = __builtin_assume_aligned(out, 32), *ba = __builtin_assume_aligned(b, 32);
 		for (i = 0; i < n; i++) outa[i] += c * ba[i];
-	} else */ if ((!((unsigned long)out & 0x0f)) && (!((unsigned long)b & 0x0f))) {
+	} else if ((!((unsigned long)out & 0x0f)) && (!((unsigned long)b & 0x0f))) {
 		real *outa = __builtin_assume_aligned(out, 16), *ba = __builtin_assume_aligned(b, 16);
 		for (i = 0; i < n; i++) outa[i] += c * ba[i];
 	} else {
