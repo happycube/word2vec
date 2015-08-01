@@ -76,7 +76,9 @@ struct vocab_word *vocab;
 struct vocab_code *vocab_codes;
 int binary = 0, cbow = 1, debug_mode = 2, window = 5, min_count = 5, num_threads = 12, min_reduce = 1;
 int *vocab_hash;
-long long vocab_max_size = 1000, vocab_size = 0, layer1_size = 100;
+long long vocab_max_size = 1000, vocab_size = 0;
+// Making layer1_size const can drastically decrease # of instructions issued...
+long long layer1_size = 100;
 long long train_words = 0, word_count_actual = 0, iter = 5, file_size = 0, classes = 0;
 real alpha = 0.025, starting_alpha, sample = 1e-3;
 real *syn0, *syn1, *syn1neg, *expTable;
@@ -353,13 +355,13 @@ void SaveVocab() {
   fclose(fo);
 }
 
-inline real DoMAC_Aligned(int n, real * __restrict__ a, real * __restrict__  b) 
+inline real DoMAC_Aligned(const int n, const int align, real * __restrict__ a, real * __restrict__  b) 
 { 
 	real output = 0;
 	int i = 0;
 
-	real *aa = __builtin_assume_aligned(a, 16);
-	real *ba = __builtin_assume_aligned(b, 16);
+	real *aa = __builtin_assume_aligned(a, align);
+	real *ba = __builtin_assume_aligned(b, align);
 
 	for (i = 0; i < n; i++) {
 		output += aa[i] * ba[i]; 
@@ -368,61 +370,70 @@ inline real DoMAC_Aligned(int n, real * __restrict__ a, real * __restrict__  b)
 	return output;
 }
 
-inline real DoMAC(int n, real * __restrict__ a, real * __restrict__  b) 
+inline real DoMAC(const int n, real * __restrict__ a, real * __restrict__  b) 
 { 
 	real output = 0;
 	int i = 0;
 
-	if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoMAC_Aligned(n, a, b);
-
-	for (i = 0; i < n; i++) {
-		output += a[i] * b[i]; 
+	if ((!((unsigned long)a & 0x3f)) && (!((unsigned long)b & 0x3f))) {
+		return output = DoMAC_Aligned(n, 64, a, b);
+	} else if ((!((unsigned long)a & 0x1f)) && (!((unsigned long)b & 0x1f))) {
+		return output = DoMAC_Aligned(n, 32, a, b);
+	} else if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) {
+		return output = DoMAC_Aligned(n, 16, a, b);
+	} else {
+		for (i = 0; i < n; i++) {
+			output += a[i] * b[i]; 
+		}
+		return output;
 	}
-
-	return output;
 }
 
-inline void DoAdd_Aligned(int n, real * __restrict__ a, real * __restrict__  b) 
+inline void DoAdd_Aligned(const int n, const int align, real * __restrict__ a, real * __restrict__  b) 
 { 
 	int i = 0;
 
-	real *aa = __builtin_assume_aligned(a, 16);
-	real *ba = __builtin_assume_aligned(b, 16);
+	real *aa = __builtin_assume_aligned(a, align);
+	real *ba = __builtin_assume_aligned(b, align);
 
 	for (i = 0; i < n; i++) {
 		aa[i] += ba[i]; 
 	}
 }
 
-
-inline void DoAdd(int n, real * __restrict__ a, real * __restrict__  b) 
+inline void DoAdd(const int n, real * __restrict__ a, real * __restrict__  b) 
 { 
 	int i = 0;
 
-	if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoAdd_Aligned(n, a, b);
+	if ((!((unsigned long)a & 0x3f)) && (!((unsigned long)b & 0x3f))) return DoAdd_Aligned(n, 64, a, b);
+	if ((!((unsigned long)a & 0x1f)) && (!((unsigned long)b & 0x1f))) return DoAdd_Aligned(n, 32, a, b);
+	if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoAdd_Aligned(n, 16, a, b);
 
 	for (i = 0; i < n; i++) {
 		a[i] += b[i]; 
 	}
 }
 
-void DoMAC1_Aligned(int n, real * __restrict__ out, real c, real * __restrict__  b) 
+inline void DoMAC1_Aligned(const int n, const int align, real * __restrict__ out, real c, real * __restrict__  b) 
 { 
 	int i = 0;
 
-	real *outa = __builtin_assume_aligned(out, 16);
-	real *ba = __builtin_assume_aligned(b, 16);
+	real *outa = __builtin_assume_aligned(out, align);
+	real *ba = __builtin_assume_aligned(b, align);
 
 	for (i = 0; i < n; i++) {
 		outa[i] += c * ba[i]; 
 	}
 }
 
-void DoMAC1(int n, real * __restrict__  out, real c, real * __restrict__  b) 
+inline void DoMAC1(const int n, real * __restrict__  out, real c, real * __restrict__  b) 
 { 
 	int i = 0;
 
-	if ((!((unsigned long)out & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoMAC1_Aligned(n, out, c, b);
+	// On Sandy Bridge w/hyperthreading, alignment > 16 causes severe pipeline stalls, slowing down perf.
+//	if ((!((unsigned long)out & 0x3f)) && (!((unsigned long)b & 0x3f))) return DoMAC1_Aligned(n, 64, out, c, b);
+//	if ((!((unsigned long)out & 0x1f)) && (!((unsigned long)b & 0x1f))) return DoMAC1_Aligned(n, 32, out, c, b);
+	if ((!((unsigned long)out & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoMAC1_Aligned(n, 16, out, c, b);
 //	printf("MAC1 %p %p\n", out, b);
 
 	for (i = 0; i < n; i++) {
