@@ -369,19 +369,41 @@ inline real DoMAC_Aligned(int n, real * __restrict__ a, real * __restrict__  b)
 }
 
 inline real DoMAC(int n, real * __restrict__ a, real * __restrict__  b) 
-//real DoMAC(int n, real * a, real *  b) 
 { 
 	real output = 0;
 	int i = 0;
 
 	if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoMAC_Aligned(n, a, b);
-//	printf("MAC %d %p %p\n", n, a, b);
 
 	for (i = 0; i < n; i++) {
 		output += a[i] * b[i]; 
 	}
 
 	return output;
+}
+
+inline void DoAdd_Aligned(int n, real * __restrict__ a, real * __restrict__  b) 
+{ 
+	int i = 0;
+
+	real *aa = __builtin_assume_aligned(a, 16);
+	real *ba = __builtin_assume_aligned(b, 16);
+
+	for (i = 0; i < n; i++) {
+		aa[i] += ba[i]; 
+	}
+}
+
+
+inline void DoAdd(int n, real * __restrict__ a, real * __restrict__  b) 
+{ 
+	int i = 0;
+
+	if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoAdd_Aligned(n, a, b);
+
+	for (i = 0; i < n; i++) {
+		a[i] += b[i]; 
+	}
 }
 
 void DoMAC1_Aligned(int n, real * __restrict__ out, real c, real * __restrict__  b) 
@@ -528,7 +550,7 @@ void *TrainModelThread(void *id) {
         if (word == 0) break;
         // The subsampling randomly discards frequent words while keeping the ranking same
         if (sample > 0) {
-          next_random = next_random * (unsigned long long)25214903917 + 11;
+          next_random = (next_random + 11) * (unsigned long long)25214903917;
           ran = (sqrt(GetWordUsageI(word) / (sample * train_words)) + 1) * (sample * train_words) / GetWordUsageI(word);
           if (ran < (next_random & 0xFFFF) / (real)65536) continue;
         }
@@ -554,7 +576,7 @@ void *TrainModelThread(void *id) {
     if (word == -1) continue;
     for (c = 0; c < layer1_size; c++) neu1[c] = neu1e[c] = 0;
     b = next_random % window;
-    next_random = next_random * (unsigned long long)25214903917 + 11;
+    next_random = (next_random + 11) * (unsigned long long)25214903917;
 
     if (cbow) {  //train the cbow architecture
 //	struct vocab_word *vocword = &vocab[word];
@@ -603,10 +625,10 @@ void *TrainModelThread(void *id) {
             target = word;
             label = 1;
             next_target = table[(next_random >> 16) % table_size];
-            next_random = next_random * (unsigned long long)25214903917 + 11;
+            next_random = (next_random + 11) * (unsigned long long)25214903917;
           } else {
             next_target = table[(next_random >> 16) % table_size];
-            next_random = next_random * (unsigned long long)25214903917 + 11;
+            next_random = (next_random + 11) * (unsigned long long)25214903917;
             
 	    if (target == 0) target = next_random % (vocab_size - 1) + 1;
 
@@ -643,22 +665,21 @@ void *TrainModelThread(void *id) {
       }
     } else {  //train skip-gram
       for (a = b; a < window * 2 + 1 - b; a++) if (a != window) {
-	//struct vocab_word *vocword = &vocab[word];
-	struct vocab_code *voccode = &vocab_codes[word];
-
         c = sentence_position - window + a;
         if ((c < 0) || (c >= sentence_length)) continue;
+	
+	struct vocab_code *voccode = &vocab_codes[word];
 
         last_word = sen[c];
         if (last_word == -1) continue;
 
         l1 = last_word * layer1_size;
         real *syn0_l1 = &syn0[l1]; 
+
         for (c = 0; c < layer1_size; c++) neu1e[c] = 0;
 
         // HIERARCHICAL SOFTMAX
         if (hs) for (d = 0; d < voccode->codelen; d++) {
-          f = 0;
           l2 = voccode->point[d] * layer1_size;
           real *syn1_l2 = &syn1[l2]; 
 
@@ -672,6 +693,7 @@ void *TrainModelThread(void *id) {
 	  DoMAC1(layer1_size, neu1e, g, syn1_l2);
 	  DoMAC1(layer1_size, syn1_l2, g, syn0_l1);
         }
+
         // NEGATIVE SAMPLING
         if (negative > 0) for (d = 0; d < negative + 1; d++) {
           if (d == 0) {
@@ -679,7 +701,7 @@ void *TrainModelThread(void *id) {
             label = 1;
           } else {
             target = table[(next_random >> 16) % table_size];
-            next_random = next_random * (unsigned long long)25214903917 + 11;
+            next_random = (next_random + 11) * (unsigned long long)25214903917;
             if (target == 0) target = next_random % (vocab_size - 1) + 1;
             if (target == word) continue;
             label = 0;
@@ -694,7 +716,8 @@ void *TrainModelThread(void *id) {
 	  DoMAC1(layer1_size, syn1neg_l2, g, syn0_l1);
         }
         // Learn weights input -> hidden
-        for (c = 0; c < layer1_size; c++) syn0[c + l1] += neu1e[c];
+	DoAdd(layer1_size, syn0_l1, neu1e);
+//        for (c = 0; c < layer1_size; c++) syn0[c + l1] += neu1e[c];
       }
     }
     sentence_position++;
