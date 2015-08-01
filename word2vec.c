@@ -361,89 +361,63 @@ void SaveVocab() {
   fclose(fo);
 }
 
-inline real DoMAC_Aligned(const int n, const int align, real * __restrict__ a, real * __restrict__  b) 
-{ 
-	real output = 0;
-	int i = 0;
-
-	real *aa = __builtin_assume_aligned(a, align);
-	real *ba = __builtin_assume_aligned(b, align);
-
-	for (i = 0; i < n; i++) {
-		output += aa[i] * ba[i]; 
-	}
-
-	return output;
-}
-
 inline real DoMAC(const int n, real * __restrict__ a, real * __restrict__  b) 
 { 
 	real output = 0;
 	int i = 0;
 
 	if ((!((unsigned long)a & 0x3f)) && (!((unsigned long)b & 0x3f))) {
-		return output = DoMAC_Aligned(n, 64, a, b);
+		real *aa = __builtin_assume_aligned(a, 64), *ba = __builtin_assume_aligned(b, 64);
+		for (i = 0; i < n; i++) output += aa[i] * ba[i];
 	} else if ((!((unsigned long)a & 0x1f)) && (!((unsigned long)b & 0x1f))) {
-		return output = DoMAC_Aligned(n, 32, a, b);
+		real *aa = __builtin_assume_aligned(a, 32), *ba = __builtin_assume_aligned(b, 32);
+		for (i = 0; i < n; i++) output += aa[i] * ba[i];
 	} else if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) {
-		return output = DoMAC_Aligned(n, 16, a, b);
+		real *aa = __builtin_assume_aligned(a, 16), *ba = __builtin_assume_aligned(b, 16);
+		for (i = 0; i < n; i++) output += aa[i] * ba[i];
 	} else {
 		for (i = 0; i < n; i++) {
 			output += a[i] * b[i]; 
 		}
-		return output;
 	}
-}
-
-inline void DoAdd_Aligned(const int n, const int align, real * __restrict__ a, real * __restrict__  b) 
-{ 
-	int i = 0;
-
-	real *aa = __builtin_assume_aligned(a, align);
-	real *ba = __builtin_assume_aligned(b, align);
-
-	for (i = 0; i < n; i++) {
-		aa[i] += ba[i]; 
-	}
+	return output;
 }
 
 inline void DoAdd(const int n, real * __restrict__ a, real * __restrict__  b) 
 { 
 	int i = 0;
 
-	if ((!((unsigned long)a & 0x3f)) && (!((unsigned long)b & 0x3f))) return DoAdd_Aligned(n, 64, a, b);
-	if ((!((unsigned long)a & 0x1f)) && (!((unsigned long)b & 0x1f))) return DoAdd_Aligned(n, 32, a, b);
-	if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoAdd_Aligned(n, 16, a, b);
-
-	for (i = 0; i < n; i++) {
-		a[i] += b[i]; 
+	if ((!((unsigned long)a & 0x3f)) && (!((unsigned long)b & 0x3f))) {
+		real *aa = __builtin_assume_aligned(a, 64), *ba = __builtin_assume_aligned(b, 64);
+		for (i = 0; i < n; i++) aa[i] += ba[i];
+	} else if ((!((unsigned long)a & 0x1f)) && (!((unsigned long)b & 0x1f))) {
+		real *aa = __builtin_assume_aligned(a, 32), *ba = __builtin_assume_aligned(b, 32);
+		for (i = 0; i < n; i++) aa[i] += ba[i];
+	} else if ((!((unsigned long)a & 0x0f)) && (!((unsigned long)b & 0x0f))) {
+		real *aa = __builtin_assume_aligned(a, 16), *ba = __builtin_assume_aligned(b, 16);
+		for (i = 0; i < n; i++) aa[i] += ba[i];
+	} else {
+		for (i = 0; i < n; i++) a[i] += b[i];
 	}
 }
 
-inline void DoMAC1_Aligned(const int n, const int align, real * __restrict__ out, real c, real * __restrict__  b) 
-{ 
-	int i = 0;
-
-	real *outa = __builtin_assume_aligned(out, align);
-	real *ba = __builtin_assume_aligned(b, align);
-
-	for (i = 0; i < n; i++) {
-		outa[i] += c * ba[i]; 
-	}
-}
-
-inline void DoMAC1(const int n, real * __restrict__  out, real c, real * __restrict__  b) 
+void DoMAC1(const int n, real * __restrict__  out, real c, real * __restrict__  b) 
 { 
 	int i = 0;
 
 	// On Sandy Bridge w/hyperthreading, alignment > 16 may or may not cause pipeline stalls, slowing down perf.
-	if ((!((unsigned long)out & 0x3f)) && (!((unsigned long)b & 0x3f))) return DoMAC1_Aligned(n, 64, out, c, b);
-	if ((!((unsigned long)out & 0x1f)) && (!((unsigned long)b & 0x1f))) return DoMAC1_Aligned(n, 32, out, c, b);
-	if ((!((unsigned long)out & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoMAC1_Aligned(n, 16, out, c, b);
-//	printf("MAC1 %p %p\n", out, b);
-
-	for (i = 0; i < n; i++) {
-		out[i] += c * b[i]; 
+	// Seems to be an icache issue
+/*	if ((!((unsigned long)out & 0x3f)) && (!((unsigned long)b & 0x3f))) {
+		real *outa = __builtin_assume_aligned(out, 64), *ba = __builtin_assume_aligned(b, 64);
+		for (i = 0; i < n; i++) outa[i] += c * ba[i];
+	} else if ((!((unsigned long)out & 0x1f)) && (!((unsigned long)b & 0x1f))) {
+		real *outa = __builtin_assume_aligned(out, 32), *ba = __builtin_assume_aligned(b, 32);
+		for (i = 0; i < n; i++) outa[i] += c * ba[i];
+	} else */ if ((!((unsigned long)out & 0x0f)) && (!((unsigned long)b & 0x0f))) {
+		real *outa = __builtin_assume_aligned(out, 16), *ba = __builtin_assume_aligned(b, 16);
+		for (i = 0; i < n; i++) outa[i] += c * ba[i];
+	} else {
+		for (i = 0; i < n; i++) out[i] += c * b[i];
 	}
 }
 

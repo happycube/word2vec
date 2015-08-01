@@ -13,6 +13,8 @@ all: word2vec word2phrase distance word-analogy compute-accuracy
 
 word2vec : word2vec.c
 	$(CC) word2vec.c -o word2vec $(CFLAGS) 
+word2vec-clang : word2vec.c
+	clang-3.6 word2vec.c -o word2vec-clang $(CFLAGS) 
 word2vec-o : word2vec-orig.c
 	$(CC) word2vec-orig.c -o word2vec-o $(CFLAGS)
 word2phrase : word2phrase.c
