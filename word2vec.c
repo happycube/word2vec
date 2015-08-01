@@ -423,7 +423,7 @@ void DoMAC1(int n, real * __restrict__  out, real c, real * __restrict__  b)
 	int i = 0;
 
 	if ((!((unsigned long)out & 0x0f)) && (!((unsigned long)b & 0x0f))) return DoMAC1_Aligned(n, out, c, b);
-	printf("MAC1 %p %p\n", out, b);
+//	printf("MAC1 %p %p\n", out, b);
 
 	for (i = 0; i < n; i++) {
 		out[i] += c * b[i]; 
@@ -485,7 +485,7 @@ void InitNet() {
   }
 
   for (a = 0; a < vocab_size; a++) for (b = 0; b < layer1_size; b++) {
-    next_random = next_random * (unsigned long long)25214903917 + 11;
+    next_random = (next_random + 11) * (unsigned long long)25214903917;
     syn0[a * layer1_size + b] = (((next_random & 0xFFFF) / (real)65536) - 0.5) / layer1_size;
   }
 
@@ -498,13 +498,12 @@ inline real getExp(real r)
 {
 	real rabs = fabs(r), rv = 0.5;
 
-	int te = (int)(rabs * EXP_SCALE);
+	if (rabs < MAX_EXP) {
+		rv = expTable[(int)(rabs * EXP_SCALE)];
+	}
 
-	if (te < EXP_TABLE_SIZE) rv = expTable[te];
+	rv = (r > 0) ? (0.5 + rv) : (0.5 - rv);
 
-	rv = r > 0 ? (0.5 + rv) : (0.5 - rv);
-
-//	if (rabs > 0.2) printf("%f %f %f\n", r, exp(r) / (exp(r) + 1.0), rv);
 	return rv;
 }
 
@@ -664,12 +663,11 @@ void *TrainModelThread(void *id) {
         }
       }
     } else {  //train skip-gram
+      register unsigned long long _next_random = next_random;
       for (a = b; a < window * 2 + 1 - b; a++) if (a != window) {
         c = sentence_position - window + a;
         if ((c < 0) || (c >= sentence_length)) continue;
 	
-	struct vocab_code *voccode = &vocab_codes[word];
-
         last_word = sen[c];
         if (last_word == -1) continue;
 
@@ -679,7 +677,9 @@ void *TrainModelThread(void *id) {
         for (c = 0; c < layer1_size; c++) neu1e[c] = 0;
 
         // HIERARCHICAL SOFTMAX
-        if (hs) for (d = 0; d < voccode->codelen; d++) {
+        if (hs) {
+	 struct vocab_code *voccode = &vocab_codes[word];
+  	 for (d = 0; d < voccode->codelen; d++) {
           l2 = voccode->point[d] * layer1_size;
           real *syn1_l2 = &syn1[l2]; 
 
@@ -693,17 +693,25 @@ void *TrainModelThread(void *id) {
 	  DoMAC1(layer1_size, neu1e, g, syn1_l2);
 	  DoMAC1(layer1_size, syn1_l2, g, syn0_l1);
         }
-
+       }
         // NEGATIVE SAMPLING
-        if (negative > 0) for (d = 0; d < negative + 1; d++) {
+        if (negative > 0) {
+         register long long next_target;
+	 for (d = 0; d < negative + 1; d++) {
           if (d == 0) {
             target = word;
             label = 1;
+            next_target = table[(_next_random >> 16) % table_size];
+            _next_random = (_next_random + 11) * (unsigned long long)25214903917;
           } else {
-            target = table[(next_random >> 16) % table_size];
-            next_random = (next_random + 11) * (unsigned long long)25214903917;
-            if (target == 0) target = next_random % (vocab_size - 1) + 1;
-            if (target == word) continue;
+            next_target = table[(_next_random >> 16) % table_size];
+            _next_random = (_next_random + 11) * (unsigned long long)25214903917;
+
+            if (target == 0) target = _next_random % (vocab_size - 1) + 1;
+            if (target == word) {
+	  	target = next_target;
+		continue;
+            }
             label = 0;
           }
           l2 = target * layer1_size;
@@ -714,11 +722,14 @@ void *TrainModelThread(void *id) {
 	  g = (label - getExp(f)) * alpha;
 	  DoMAC1(layer1_size, neu1e, g, syn1neg_l2);
 	  DoMAC1(layer1_size, syn1neg_l2, g, syn0_l1);
+	  target = next_target;
         }
         // Learn weights input -> hidden
 	DoAdd(layer1_size, syn0_l1, neu1e);
 //        for (c = 0; c < layer1_size; c++) syn0[c + l1] += neu1e[c];
+       }
       }
+      next_random = _next_random + 11;
     }
     sentence_position++;
     if (sentence_position >= sentence_length) {
