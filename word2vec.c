@@ -161,7 +161,7 @@ int AddWordToVocab(char *word) {
 	unsigned int hash, length = strlen(word) + 1;
 	char *word_addr = NULL;
 
-	if (length <= MAX_SHORT_WORD) {
+	if (length < (MAX_SHORT_WORD - 1)) {
 		vocab[vocab_size].count = 1 | SHORT_WORD;
 		word_addr = vocab[vocab_size].w.shortword;
 //		printf("short word %d %s\n", vocab_size, word);
