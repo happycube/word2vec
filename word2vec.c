@@ -594,15 +594,6 @@ void *TrainModelThread(void *id) {
 	DoMAC1(layer1_size, neu1e, g, syn1_l2);
         // Learn weights hidden -> output
 	DoMAC1(layer1_size, syn1_l2, g, neu1);
-
-/*
-          for (c = 0; c < layer1_size; c++) {
-		// Propagate errors output -> hidden
-		neu1e[c] += g * syn1_l2[c];
-          	// Learn weights hidden -> output
-          	syn1_l2[c] += g * neu1[c];
-          }
-*/
         }
 
         // NEGATIVE SAMPLING
@@ -629,20 +620,13 @@ void *TrainModelThread(void *id) {
           l2 = target * layer1_size;
           real *syn1neg_l2 = &syn1neg[l2]; 
 
- //         f = 0;
-//          for (c = 0; c < layer1_size; c++) f += neu1[c] * syn1neg_l2[c];
 	  f = DoMAC(layer1_size, neu1, syn1neg_l2);
 
 	g = (label - getExp(f)) * alpha;
 
 	DoMAC1(layer1_size, neu1e, g, syn1neg_l2);
 	DoMAC1(layer1_size, syn1neg_l2, g, neu1);
-/*
-          for (c = 0; c < layer1_size; c++) {
-		neu1e[c] += g * syn1neg_l2[c];
-         	syn1neg_l2[c] += g * neu1[c];
-          }
-*/
+
 	target = next_target;
         }
 
@@ -669,26 +653,24 @@ void *TrainModelThread(void *id) {
         if (last_word == -1) continue;
 
         l1 = last_word * layer1_size;
+        real *syn0_l1 = &syn0[l1]; 
         for (c = 0; c < layer1_size; c++) neu1e[c] = 0;
 
         // HIERARCHICAL SOFTMAX
         if (hs) for (d = 0; d < voccode->codelen; d++) {
           f = 0;
           l2 = voccode->point[d] * layer1_size;
+          real *syn1_l2 = &syn1[l2]; 
 
           // Propagate hidden -> output
-          for (c = 0; c < layer1_size; c++) f += syn0[c + l1] * syn1[c + l2];
+	  f = DoMAC(layer1_size, syn0_l1, syn1_l2);
 
-	f = getExp(f);
+	  f = getExp(f);
 
           // 'g' is the gradient multiplied by the learning rate
           g = (1 - voccode->code[d] - f) * alpha;
-          for (c = 0; c < layer1_size; c++) {
-          	// Propagate errors output -> hidden
-		neu1e[c] += g * syn1[c + l2];
-          	// Learn weights hidden -> output
-          	syn1[c + l2] += g * syn0[c + l1];
-          }
+	  DoMAC1(layer1_size, neu1e, g, syn1_l2);
+	  DoMAC1(layer1_size, syn1_l2, g, syn0_l1);
         }
         // NEGATIVE SAMPLING
         if (negative > 0) for (d = 0; d < negative + 1; d++) {
@@ -703,13 +685,13 @@ void *TrainModelThread(void *id) {
             label = 0;
           }
           l2 = target * layer1_size;
-          f = 0;
-          for (c = 0; c < layer1_size; c++) f += syn0[c + l1] * syn1neg[c + l2];
-          g = (label - getExp(f)) * alpha;
-          for (c = 0; c < layer1_size; c++) {
-		neu1e[c] += g * syn1neg[c + l2];
-		syn1neg[c + l2] += g * syn0[c + l1];
-          }
+          real *syn1neg_l2 = &syn1neg[l2]; 
+
+	  f = DoMAC(layer1_size, syn0_l1, syn1neg_l2);
+      
+	  g = (label - getExp(f)) * alpha;
+	  DoMAC1(layer1_size, neu1e, g, syn1neg_l2);
+	  DoMAC1(layer1_size, syn1neg_l2, g, syn0_l1);
         }
         // Learn weights input -> hidden
         for (c = 0; c < layer1_size; c++) syn0[c + l1] += neu1e[c];
